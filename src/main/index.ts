@@ -1,10 +1,30 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
-import { join } from 'path'
+import {
+  app,
+  shell,
+  BrowserWindow,
+  ipcMain,
+  Menu,
+  Tray,
+  nativeImage,
+  Notification,
+  clipboard
+} from 'electron'
+import path, { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 
+import express from 'express'
+
+const expressApp = express()
+
+expressApp.get('/', (req, res) => {
+  console.log(req.query)
+  res.send('認可に成功しました!<br/>このページを閉じてください。')
+})
+
+expressApp.listen(4200)
+
 function createWindow(): void {
-  // Create the browser window.
   const mainWindow = new BrowserWindow({
     width: 900,
     height: 670,
@@ -26,8 +46,6 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
-  // HMR for renderer base on electron-vite cli.
-  // Load the remote URL for development or the local html file for production.
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
@@ -35,22 +53,60 @@ function createWindow(): void {
   }
 }
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
-  // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron')
 
-  // Default open or close DevTools by F12 in development
-  // and ignore CommandOrControl + R in production.
-  // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // IPC test
-  ipcMain.on('ping', () => console.log('pong'))
+  const img = nativeImage.createFromPath(path.join(__dirname, '../../resources/tray.png'))
+  const tray = new Tray(img)
+  tray.setToolTip('clip-master')
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      {
+        label: 'コントロールパネル',
+        click: (): void => {
+          // もしウィンドウが存在しない場合は作成
+          if (BrowserWindow.getAllWindows().length === 0) {
+            createWindow()
+          } else {
+            // 縮小化されている場合は元に戻す
+            const window: Electron.BrowserWindow = BrowserWindow.getAllWindows()[0]
+            if (window.isMinimized()) {
+              window.restore()
+            }
+          }
+          if (process.platform === 'darwin') {
+            app.dock.show()
+          }
+        }
+      },
+      {
+        label: '一時停止',
+        click: (): void => {
+          new Notification({
+            title: '一時停止',
+            body: '通知を一時停止しました'
+          }).show()
+        }
+      },
+      { label: '終了', role: 'quit' }
+    ])
+  )
+
+  ipcMain.on('getClipBoard', () => {
+    let text = ''
+    if (process.platform === 'darwin') {
+      // MacOS
+      text = clipboard.read('public.file-url')
+    } else {
+      // Windows
+      text = clipboard.readBuffer('FileNameW').toString('ucs2')
+    } // TODO: Linux
+    console.log(text)
+  })
 
   createWindow()
 
@@ -61,14 +117,8 @@ app.whenReady().then(() => {
   })
 })
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
+  if (process.platform === 'darwin') {
+    app.dock.hide()
   }
 })
-
-// In this file you can include the rest of your app"s specific main process
-// code. You can also put them in separate files and require them here.

@@ -1,0 +1,12 @@
+<script>
+  document.addEventListener('dragover', (e) => {
+    e.preventDefault()
+  });
+  document.addEventListener('drop', (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    for (const file of e.dataTransfer.files) {
+      console.log(file.path)
+    }
+  })
+</script>
